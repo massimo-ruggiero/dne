@@ -7,12 +7,14 @@ class DinoV2Timm(nn.Module):
     def __init__(self, 
                  model_name="vit_base_patch14_dinov2", 
                  pretrained=True,
+                 img_size=224,
                  freeze_backbone=True): 
         super().__init__()
         self.backbone = timm.create_model(
             model_name,
             pretrained=pretrained,
-            num_classes=0 # no head
+            num_classes=0, # no head
+            img_size=img_size,
         )
         self.embed_dim = self.backbone.num_features
 

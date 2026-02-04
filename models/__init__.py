@@ -26,6 +26,7 @@ def get_net_optimizer_scheduler(args):
         net = DinoV2Timm(
             model_name=args.model.dino_name,
             pretrained=args.model.pretrained,
+            img_size=args.dataset.image_size,
             freeze_backbone=True,
         )
         if args.model.method == 'dne' and args.eval.eval_classifier == 'density':
