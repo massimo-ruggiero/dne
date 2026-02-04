@@ -26,3 +26,6 @@ class DinoV2Timm(nn.Module):
             features = self.backbone(x)
             
         return features
+
+    def forward(self, x):
+        return self.forward_features(x)
