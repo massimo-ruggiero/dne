@@ -2,6 +2,7 @@ from .resnet import ResNetModel
 from .vit import ViT
 from .csflow_net import NetCSFlow
 from .revdis_net import NetRevDis
+from .dino_v2 import DinoV2Timm
 
 from torch import nn
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -21,6 +22,18 @@ def get_net_optimizer_scheduler(args):
             net.load_pretrained(checkpoint_path)
         optimizer = get_optimizer(args, net)
         scheduler = CosineAnnealingWarmRestarts(optimizer, args.train.num_epochs)
+    elif args.model.name == 'dino_v2':
+        net = DinoV2Timm(
+            model_name=args.model.dino_name,
+            pretrained=args.model.pretrained,
+            freeze_backbone=True,
+        )
+        if args.model.method == 'dne' and args.eval.eval_classifier == 'density':
+            optimizer = None
+            scheduler = None
+        else:
+            optimizer = get_optimizer(args, net)
+            scheduler = CosineAnnealingWarmRestarts(optimizer, args.train.num_epochs)
     elif args.model.name == 'net_csflow':
         net = NetCSFlow(args)
         optim_modules = nn.ModuleList()

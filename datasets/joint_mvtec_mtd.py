@@ -5,7 +5,7 @@ from joblib import Parallel, delayed
 import os
 import numpy as np
 import pandas as pd
-from collections import Iterable
+from collections.abc import Iterable
 
 def flatten(items, ignore_types=(str, bytes)):
     for x in items:

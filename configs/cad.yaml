@@ -12,7 +12,8 @@ dataset:
 
 
 model:
-  name: vit # resnet, vit, net_csflow, net_revdis
+  name: dino_v2 # vit resnet, vit, net_csflow, net_revdis
+  dino_name: vit_base_patch14_dinov2
   pretrained: True
   method: dne # dne, panda, cutpaste, csflow, revdis, er, der, derpp, fdr, agem, upper
   # dne
@@ -49,7 +50,13 @@ eval:
   batch_size: 32 # 32, revdis:1; csflow:16
   visualization: False
 
-
+density:
+  name: gde # gde, gmm, kde
+  gmm:
+    n_components: 4
+    reg_covar: 1.0e-6
+    covariance_type: full
+    max_iter: 100
 
 
 

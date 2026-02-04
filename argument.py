@@ -41,6 +41,7 @@ def get_args():
     parser.add_argument('--mtd_dir', type=str, default="../datasets/mtd_ano_mask")
     parser.add_argument('--save_checkpoint', type=str2bool, default=False, help='save checkpoint or not.')
     parser.add_argument('--save_path', type=str, default="./checkpoints")
+    parser.add_argument('--results_dir', type=str, default="./results")
     parser.add_argument('--noise_ratio', type=float, default=0)
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()

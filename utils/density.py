@@ -2,7 +2,7 @@ from sklearn.covariance import LedoitWolf, empirical_covariance
 from sklearn.neighbors import KernelDensity
 from sklearn.mixture import GaussianMixture
 import torch
-
+import numpy as np
 
 class Density(object):
     def fit(self, embeddings):
@@ -10,6 +10,33 @@ class Density(object):
 
     def predict(self, embeddings):
         raise NotImplementedError
+
+
+def is_gmm_density(density):
+    return isinstance(density, GMMDensitySklearn)
+
+
+def get_density(args):
+    density_cfg = getattr(args, "density", None)
+    density_name = getattr(density_cfg, "name", "gde")
+
+    if density_name == "gmm":
+        gmm_cfg = getattr(density_cfg, "gmm", None)
+        n_components = getattr(gmm_cfg, "n_components", 3)
+        reg_covar = getattr(gmm_cfg, "reg_covar", 1e-6)
+        covariance_type = getattr(gmm_cfg, "covariance_type", "full")
+        max_iter = getattr(gmm_cfg, "max_iter", 100)
+        random_state = getattr(args, "seed", 42)
+        return GMMDensitySklearn(
+            n_components=n_components,
+            reg_covar=reg_covar,
+            covariance_type=covariance_type,
+            max_iter=max_iter,
+            random_state=random_state,
+        )
+    if density_name == "kde":
+        return GaussianDensitySklearn()
+    return GaussianDensityTorch()
 
 
 class GaussianDensityTorch(object):
@@ -72,3 +99,41 @@ class GaussianDensitySklearn():
         scores = -scores
 
         return scores
+
+
+class GMMDensitySklearn():
+    def __init__(self, n_components, reg_covar, covariance_type='full', random_state=42):
+        self.n_components = n_components
+        self.covariance_type = covariance_type
+        self.reg_covar = reg_covar
+        self.random_state = random_state
+        self.gmm  = GaussianMixture(
+            n_components=self.n_components,
+            covariance_type=self.covariance_type,
+            reg_covar=self.reg_covar,
+            random_state=self.random_state
+        )
+        self.is_fitted = False
+        
+    def fit(self, embeddings):
+        if isinstance(embeddings, torch.Tensor):
+            embeddings = embeddings.cpu().numpy()
+        
+        self.gmm.fit(embeddings)
+        self.is_fitted = True
+        return self.gmm.means_, self.gmm.covariances_
+
+    def predict(self, embeddings):
+        if isinstance(embeddings, torch.Tensor):
+            embeddings = embeddings.cpu().numpy()
+        
+        scores = -self.gmm.score_samples(embeddings)
+        
+        return scores
+    
+    def sample(self, n_samples):
+        if not self.is_fitted:
+            raise RuntimeError("GMM not fitted. Call fit() first.")
+        
+        samples, _ = self.gmm.sample(n_samples)
+        return samples

@@ -1,4 +1,5 @@
 from sklearn.metrics import roc_curve, auc, roc_auc_score
+import csv
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -13,6 +14,29 @@ from utils.visualization import plot_tsne, compare_histogram, cal_anomaly_map
 def t2np(tensor):
     '''pytorch tensor -> numpy array'''
     return tensor.cpu().data.numpy() if tensor is not None else None
+
+
+def append_metric_row(args, epoch, task_name, roc_auc, split="test"):
+    save_dir = args.results_dir
+    os.makedirs(save_dir, exist_ok=True)
+    csv_path = os.path.join(save_dir, "metrics.csv")
+    row = {
+        "epoch": epoch,
+        "split": split,
+        "model_name": args.model.name,
+        "method": args.model.method,
+        "eval_classifier": args.eval.eval_classifier,
+        "task": task_name,
+        "auc": roc_auc,
+        "data_order": getattr(args, "data_order", None),
+        "seed": getattr(args, "seed", None),
+    }
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
 
 
 def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net):
@@ -40,16 +64,22 @@ def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net):
         all_roc_auc.append(roc_auc * len(learned_task))
         task_num += len(learned_task)
         print('data_type:', learned_task, 'auc:', roc_auc, '**' * 11)
+        append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
 
         eval_task_wise_scores.append(anomaly_score)
         eval_task_wise_scores_np = np.concatenate(eval_task_wise_scores)
         eval_task_wise_labels.append(is_anomaly)
         eval_task_wise_labels_np = np.concatenate(eval_task_wise_labels)
-    print('mean_auc:', np.sum(all_roc_auc) / task_num, '**' * 11)
+    mean_auc = np.sum(all_roc_auc) / task_num
+    print('mean_auc:', mean_auc, '**' * 11)
+    append_metric_row(args, epoch, "mean", mean_auc, split="test")
 
     if args.eval.visualization:
         name = f'{args.model.method}_task{len(learned_tasks)}_epoch{epoch}'
-        his_save_path = f'./his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}_epochs_seed{args.seed}'
+        his_save_path = os.path.join(
+            args.results_dir,
+            f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}_epochs_seed{args.seed}',
+        )
         compare_histogram(np.array(eval_task_wise_scores_np), np.array(eval_task_wise_labels_np), start=0, thresh=5,
                           interval=1, name=name, save_path=his_save_path)
 
@@ -76,16 +106,22 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net):
         all_roc_auc.append(roc_auc * len(learned_task))
         task_num += len(learned_task)
         print('data_type:', learned_task, 'auc:', roc_auc, '**' * 11)
+        append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
 
         eval_task_wise_scores.append(pr_list_sp)
         eval_task_wise_scores_np = np.concatenate(eval_task_wise_scores)
         eval_task_wise_labels.append(gt_list_sp)
         eval_task_wise_labels_np = np.concatenate(eval_task_wise_labels)
-    print('mean_auc:', np.sum(all_roc_auc) / task_num, '**' * 11)
+    mean_auc = np.sum(all_roc_auc) / task_num
+    print('mean_auc:', mean_auc, '**' * 11)
+    append_metric_row(args, epoch, "mean", mean_auc, split="test")
 
     if args.eval.visualization:
         name = f'{args.model.method}_task{len(learned_tasks)}_epoch{epoch}'
-        his_save_path = f'./his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}_epochs_seed{args.seed}'
+        his_save_path = os.path.join(
+            args.results_dir,
+            f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}_epochs_seed{args.seed}',
+        )
         compare_histogram(np.array(eval_task_wise_scores_np), np.array(eval_task_wise_labels_np), thresh=2, interval=1,
                           name=name, save_path=his_save_path)
 
@@ -103,18 +139,26 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density):
             labels, embeds, logits = [], [], []
             with torch.no_grad():
                 for x, label in dataloader_test:
-                    logit, embed = net(x.to(args.device))
-                    _, logit = torch.max(logit, 1)
-                    logits.append(logit.cpu())
-                    embeds.append(embed.cpu())
+                    if args.model.name == 'dino_v2':
+                        embed = net(x.to(args.device))
+                        embeds.append(embed.cpu())
+                    else:
+                        logit, embed = net(x.to(args.device))
+                        _, logit = torch.max(logit, 1)
+                        logits.append(logit.cpu())
+                        embeds.append(embed.cpu())
                     labels.append(label.cpu())
-            labels, embeds, logits = torch.cat(labels), torch.cat(embeds), torch.cat(logits)
+            labels, embeds = torch.cat(labels), torch.cat(embeds)
+            if logits:
+                logits = torch.cat(logits)
             # norm embeds
             if args.eval.eval_classifier == 'density':
                 embeds = F.normalize(embeds, p=2, dim=1)  # embeds.shape=(2*bs, emd_dim)
                 distances = density.predict(embeds)  # distances.shape=(2*bs)
                 fpr, tpr, _ = roc_curve(labels, distances)
             elif args.eval.eval_classifier == 'head':
+                if args.model.name == 'dino_v2':
+                    raise ValueError("eval_classifier='head' not supported for dino_v2 without a head.")
                 fpr, tpr, _ = roc_curve(labels, logits)
             roc_auc = auc(fpr, tpr)
             all_roc_auc.append(roc_auc * len(learned_task))
@@ -122,11 +166,18 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density):
             all_embeds.append(embeds)
             all_labels.append(labels)
             print('data_type:', learned_task[:], 'auc:', roc_auc, '**' * 11)
+            append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
 
             if args.eval.visualization:
                 name = f'{args.model.method}_task{len(learned_tasks)}_{learned_task[0]}_epoch{epoch}'
-                his_save_path = f'./his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}'
-                tnse_save_path = f'./tsne_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}'
+                his_save_path = os.path.join(
+                    args.results_dir,
+                    f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}',
+                )
+                tnse_save_path = os.path.join(
+                    args.results_dir,
+                    f'tsne_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}',
+                )
                 plot_tsne(labels, np.array(embeds), defect_name=name, save_path=tnse_save_path)
                 # These parameters can be modified based on the visualization effect
                 start, thresh, interval = 0, 120, 1
@@ -134,12 +185,18 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density):
                                   thresh=thresh, interval=interval,
                                   name=name, save_path=his_save_path)
 
-        print('mean_auc:', np.sum(all_roc_auc) / task_num, '**' * 11)
+        mean_auc = np.sum(all_roc_auc) / task_num
+        print('mean_auc:', mean_auc, '**' * 11)
+        append_metric_row(args, epoch, "mean", mean_auc, split="test")
 
 
 if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = '3'
     args = get_args()
+    os.makedirs(args.results_dir, exist_ok=True)
+    if args.save_path == "./checkpoints":
+        args.save_path = os.path.join(args.results_dir, "checkpoints")
+    os.makedirs(args.save_path, exist_ok=True)
     dataloaders_train, dataloaders_test, learned_tasks, all_test_filenames = [], [], [], []
     for t in range(args.dataset.n_tasks):
         train_dataloader, dataloaders_train, dataloaders_test, learned_tasks, data_train_nums, all_test_filenames = get_dataloaders(args, t, dataloaders_train, dataloaders_test, learned_tasks, all_test_filenames)
