@@ -20,6 +20,9 @@ def append_metric_row(args, epoch, task_id, task_name, roc_auc, split="test", ro
     save_dir = args.results_dir
     os.makedirs(save_dir, exist_ok=True)
     csv_path = os.path.join(save_dir, "metrics.csv")
+    data_order = getattr(args, "data_order", None)
+    if data_order is None and hasattr(args, "dataset"):
+        data_order = getattr(args.dataset, "dataset_order", None)
     row = {
         "epoch": epoch,
         "split": split,
@@ -30,7 +33,7 @@ def append_metric_row(args, epoch, task_id, task_name, roc_auc, split="test", ro
         "task_id": task_id,
         "task_name": task_name,
         "auc": roc_auc,
-        "data_order": getattr(args, "data_order", None),
+        "data_order": data_order,
         "seed": getattr(args, "seed", None),
     }
     write_header = not os.path.exists(csv_path)
@@ -177,13 +180,16 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
             if args.eval.visualization:
                 task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
                 name = f'{args.model.method}_task{len(learned_tasks)}_{learned_task[0]}_epoch{epoch}'
+                data_order = getattr(args, "data_order", None)
+                if data_order is None and hasattr(args, "dataset"):
+                    data_order = getattr(args.dataset, "dataset_order", None)
                 his_save_path = os.path.join(
                     task_dir,
-                    f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}',
+                    f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{data_order}_seed{args.seed}',
                 )
                 tnse_save_path = os.path.join(
                     task_dir,
-                    f'tsne_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}',
+                    f'tsne_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{data_order}_seed{args.seed}',
                 )
                 plot_tsne(labels, np.array(embeds), defect_name=name, save_path=tnse_save_path)
                 # These parameters can be modified based on the visualization effect
