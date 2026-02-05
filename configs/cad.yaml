@@ -51,7 +51,7 @@ eval:
   visualization: True
 
 density:
-  name: gde #gmm_committee #gde #gmm_committee # gde, kde
+  name: gmm_committee #gde #gmm_committee #gde #gmm_committee # gde, kde
   gmm:
     n_components: 3
     reg_covar: 1.0e-5
