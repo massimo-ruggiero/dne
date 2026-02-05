@@ -27,6 +27,7 @@ class BaseMethod(nn.Module):
         task_wise_cov,
         task_wise_train_data_nums,
         t,
+        save=True,
     ):
         pass
 
@@ -97,5 +98,4 @@ class BaseMethodwDNE(nn.Module):
                 return density
         else:
             pass
-
 

@@ -165,8 +165,9 @@ class GMMCommitteeDensity():
         self.max_iter = max_iter
         self.random_state = random_state
         self.memory_list = []
+        self.current_record = None
 
-    def fit_task(self, embeddings, task_id=None):
+    def fit_task(self, embeddings, task_id=None, save=True):
         if isinstance(embeddings, torch.Tensor):
             embeddings = embeddings.cpu().numpy()
         gmm = GaussianMixture(
@@ -179,22 +180,39 @@ class GMMCommitteeDensity():
         gmm.fit(embeddings)
         record = {
             "task_id": task_id,
-            "gmm": gmm,
             "means": gmm.means_,
             "covariances": gmm.covariances_,
             "weights": gmm.weights_,
+            "precisions_cholesky": gmm.precisions_cholesky_,
         }
-        self.memory_list.append(record)
+        if save:
+            self.memory_list.append(record)
+            self.current_record = None
+        else:
+            self.current_record = record
         return gmm.means_, gmm.covariances_
 
     def predict(self, embeddings):
-        if len(self.memory_list) == 0:
+        records = list(self.memory_list)
+        if self.current_record is not None:
+            records.append(self.current_record)
+        if len(records) == 0:
             raise RuntimeError("GMM committee is empty. Call fit_task() first.")
         if isinstance(embeddings, torch.Tensor):
             embeddings = embeddings.cpu().numpy()
         log_likelihoods = []
-        for record in self.memory_list:
-            gmm = record["gmm"]
+        for record in records:
+            gmm = GaussianMixture(
+                n_components=self.n_components,
+                covariance_type=self.covariance_type,
+                reg_covar=self.reg_covar,
+                max_iter=self.max_iter,
+                random_state=self.random_state,
+            )
+            gmm.means_ = record["means"]
+            gmm.covariances_ = record["covariances"]
+            gmm.weights_ = record["weights"]
+            gmm.precisions_cholesky_ = record["precisions_cholesky"]
             log_likelihoods.append(gmm.score_samples(embeddings))
         log_likelihoods = np.stack(log_likelihoods, axis=1)  # [n_samples, n_models]
         max_log_likelihood = np.max(log_likelihoods, axis=1)

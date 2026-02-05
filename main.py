@@ -10,7 +10,7 @@ from argument import get_args
 from models import get_net_optimizer_scheduler
 from methods import get_model
 from datasets import get_dataloaders
-from utils.density import get_density, is_gmm_density, is_gmm_committee
+from utils.density import get_density, is_gmm_committee
 
 
 
@@ -95,17 +95,36 @@ def main(args):
                 if not is_gmm_committee(density):
                     eval_start = time.perf_counter()
                     net.eval()
-                    if is_gmm_density(density) and hasattr(model, "training_epoch_gmm"):
-                        density = model.training_epoch_gmm(density, one_epoch_embeds, task_wise_mean, task_wise_cov, task_wise_train_data_nums, t)
-                    else:
-                        density = model.training_epoch(density, one_epoch_embeds, task_wise_mean, task_wise_cov, task_wise_train_data_nums, t)
+                    density = model.training_epoch(
+                        density,
+                        one_epoch_embeds,
+                        task_wise_mean,
+                        task_wise_cov,
+                        task_wise_train_data_nums,
+                        t,
+                    )
+                    eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=t)
+                    net.train()
+                    append_timing_row(args, epoch, "eval", time.perf_counter() - eval_start, task=t)
+                else:
+                    eval_start = time.perf_counter()
+                    net.eval()
+                    density = model.training_epoch_gmm(
+                        density,
+                        one_epoch_embeds,
+                        task_wise_mean,
+                        task_wise_cov,
+                        task_wise_train_data_nums,
+                        t,
+                        save=False,
+                    )
                     eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=t)
                     net.train()
                     append_timing_row(args, epoch, "eval", time.perf_counter() - eval_start, task=t)
 
         if hasattr(model, 'end_task'):
             model.end_task(train_dataloader)
-        if is_gmm_committee(density) and hasattr(model, "training_epoch_gmm") and last_epoch_embeds is not None:
+        if is_gmm_committee(density) and last_epoch_embeds is not None:
             eval_start = time.perf_counter()
             net.eval()
             density = model.training_epoch_gmm(
@@ -115,6 +134,7 @@ def main(args):
                 task_wise_cov,
                 task_wise_train_data_nums,
                 t,
+                save=True,
             )
             eval_model(args, args.train.num_epochs - 1, dataloaders_test, learned_tasks, net, density, round_task=t)
             net.train()
