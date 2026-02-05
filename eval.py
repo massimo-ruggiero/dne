@@ -16,7 +16,7 @@ def t2np(tensor):
     return tensor.cpu().data.numpy() if tensor is not None else None
 
 
-def append_metric_row(args, epoch, task_name, roc_auc, split="test"):
+def append_metric_row(args, epoch, task_id, task_name, roc_auc, split="test", round_task=None):
     save_dir = args.results_dir
     os.makedirs(save_dir, exist_ok=True)
     csv_path = os.path.join(save_dir, "metrics.csv")
@@ -26,7 +26,9 @@ def append_metric_row(args, epoch, task_name, roc_auc, split="test"):
         "model_name": args.model.name,
         "method": args.model.method,
         "eval_classifier": args.eval.eval_classifier,
-        "task": task_name,
+        "round_task": round_task,
+        "task_id": task_id,
+        "task_name": task_name,
         "auc": roc_auc,
         "data_order": getattr(args, "data_order", None),
         "seed": getattr(args, "seed", None),
@@ -39,7 +41,7 @@ def append_metric_row(args, epoch, task_name, roc_auc, split="test"):
         writer.writerow(row)
 
 
-def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net):
+def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=None):
     all_roc_auc = []
     eval_task_wise_scores, eval_task_wise_labels = [], []
     task_num = 0
@@ -64,6 +66,7 @@ def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net):
         all_roc_auc.append(roc_auc * len(learned_task))
         task_num += len(learned_task)
         print('data_type:', learned_task, 'auc:', roc_auc, '**' * 11)
+        append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, split="test", round_task=round_task)
         append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
 
         eval_task_wise_scores.append(anomaly_score)
@@ -72,19 +75,20 @@ def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net):
         eval_task_wise_labels_np = np.concatenate(eval_task_wise_labels)
     mean_auc = np.sum(all_roc_auc) / task_num
     print('mean_auc:', mean_auc, '**' * 11)
-    append_metric_row(args, epoch, "mean", mean_auc, split="test")
+    append_metric_row(args, epoch, -1, "mean", mean_auc, split="test", round_task=round_task)
 
     if args.eval.visualization:
+        task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
         name = f'{args.model.method}_task{len(learned_tasks)}_epoch{epoch}'
         his_save_path = os.path.join(
-            args.results_dir,
+            task_dir,
             f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}_epochs_seed{args.seed}',
         )
         compare_histogram(np.array(eval_task_wise_scores_np), np.array(eval_task_wise_labels_np), start=0, thresh=5,
                           interval=1, name=name, save_path=his_save_path)
 
 
-def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net):
+def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=None):
     all_roc_auc = []
     eval_task_wise_scores, eval_task_wise_labels = [], []
     task_num = 0
@@ -106,6 +110,7 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net):
         all_roc_auc.append(roc_auc * len(learned_task))
         task_num += len(learned_task)
         print('data_type:', learned_task, 'auc:', roc_auc, '**' * 11)
+        append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, split="test", round_task=round_task)
         append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
 
         eval_task_wise_scores.append(pr_list_sp)
@@ -114,12 +119,13 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net):
         eval_task_wise_labels_np = np.concatenate(eval_task_wise_labels)
     mean_auc = np.sum(all_roc_auc) / task_num
     print('mean_auc:', mean_auc, '**' * 11)
-    append_metric_row(args, epoch, "mean", mean_auc, split="test")
+    append_metric_row(args, epoch, -1, "mean", mean_auc, split="test", round_task=round_task)
 
     if args.eval.visualization:
+        task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
         name = f'{args.model.method}_task{len(learned_tasks)}_epoch{epoch}'
         his_save_path = os.path.join(
-            args.results_dir,
+            task_dir,
             f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}_epochs_seed{args.seed}',
         )
         compare_histogram(np.array(eval_task_wise_scores_np), np.array(eval_task_wise_labels_np), thresh=2, interval=1,
@@ -127,11 +133,11 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net):
 
 
 
-def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density):
+def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=None):
     if args.model.method == 'csflow':
-        csflow_eval(args, epoch, dataloaders_test, learned_tasks, net)
+        csflow_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=round_task)
     elif args.model.method == 'revdis':
-        revdis_eval(args, epoch, dataloaders_test, learned_tasks, net)
+        revdis_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=round_task)
     else:
         all_roc_auc, all_embeds, all_labels = [], [], []
         task_num = 0
@@ -166,16 +172,17 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density):
             all_embeds.append(embeds)
             all_labels.append(labels)
             print('data_type:', learned_task[:], 'auc:', roc_auc, '**' * 11)
-            append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
+            append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, split="test", round_task=round_task)
 
             if args.eval.visualization:
+                task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
                 name = f'{args.model.method}_task{len(learned_tasks)}_{learned_task[0]}_epoch{epoch}'
                 his_save_path = os.path.join(
-                    args.results_dir,
+                    task_dir,
                     f'his_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}',
                 )
                 tnse_save_path = os.path.join(
-                    args.results_dir,
+                    task_dir,
                     f'tsne_results/{args.model.method}{args.model.name}_{args.train.num_epochs}e_order{args.data_order}_seed{args.seed}',
                 )
                 plot_tsne(labels, np.array(embeds), defect_name=name, save_path=tnse_save_path)
@@ -187,7 +194,7 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density):
 
         mean_auc = np.sum(all_roc_auc) / task_num
         print('mean_auc:', mean_auc, '**' * 11)
-        append_metric_row(args, epoch, "mean", mean_auc, split="test")
+        append_metric_row(args, epoch, -1, "mean", mean_auc, split="test", round_task=round_task)
 
 
 if __name__ == "__main__":
@@ -203,4 +210,4 @@ if __name__ == "__main__":
 
     epoch = args.train.num_epochs
     net, density = torch.load(f'{args.save_path}/net.pth'), torch.load(f'{args.save_path}/density.pth')
-    eval_model(args, epoch, dataloaders_test, learned_tasks, net, density)
+    eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=None)

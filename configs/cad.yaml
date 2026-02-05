@@ -51,10 +51,10 @@ eval:
   visualization: False
 
 density:
-  name: gde # gde, gmm, kde
+  name: gmm_committee # gde, kde
   gmm:
-    n_components: 4
-    reg_covar: 1.0e-6
+    n_components: 3
+    reg_covar: 1.0e-5
     covariance_type: full
     max_iter: 100
 

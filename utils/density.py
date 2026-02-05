@@ -16,6 +16,10 @@ def is_gmm_density(density):
     return isinstance(density, GMMDensitySklearn)
 
 
+def is_gmm_committee(density):
+    return isinstance(density, GMMCommitteeDensity)
+
+
 def get_density(args):
     density_cfg = getattr(args, "density", None)
     density_name = getattr(density_cfg, "name", "gde")
@@ -28,6 +32,20 @@ def get_density(args):
         max_iter = getattr(gmm_cfg, "max_iter", 100)
         random_state = getattr(args, "seed", 42)
         return GMMDensitySklearn(
+            n_components=n_components,
+            reg_covar=reg_covar,
+            covariance_type=covariance_type,
+            max_iter=max_iter,
+            random_state=random_state,
+        )
+    if density_name == "gmm_committee":
+        gmm_cfg = getattr(density_cfg, "gmm", None)
+        n_components = getattr(gmm_cfg, "n_components", 3)
+        reg_covar = getattr(gmm_cfg, "reg_covar", 1e-5)
+        covariance_type = getattr(gmm_cfg, "covariance_type", "full")
+        max_iter = getattr(gmm_cfg, "max_iter", 100)
+        random_state = getattr(args, "seed", 42)
+        return GMMCommitteeDensity(
             n_components=n_components,
             reg_covar=reg_covar,
             covariance_type=covariance_type,
@@ -137,3 +155,47 @@ class GMMDensitySklearn():
         
         samples, _ = self.gmm.sample(n_samples)
         return samples
+
+
+class GMMCommitteeDensity():
+    def __init__(self, n_components, reg_covar, covariance_type='full', max_iter=100, random_state=42):
+        self.n_components = n_components
+        self.covariance_type = covariance_type
+        self.reg_covar = reg_covar
+        self.max_iter = max_iter
+        self.random_state = random_state
+        self.memory_list = []
+
+    def fit_task(self, embeddings, task_id=None):
+        if isinstance(embeddings, torch.Tensor):
+            embeddings = embeddings.cpu().numpy()
+        gmm = GaussianMixture(
+            n_components=self.n_components,
+            covariance_type=self.covariance_type,
+            reg_covar=self.reg_covar,
+            max_iter=self.max_iter,
+            random_state=self.random_state,
+        )
+        gmm.fit(embeddings)
+        record = {
+            "task_id": task_id,
+            "gmm": gmm,
+            "means": gmm.means_,
+            "covariances": gmm.covariances_,
+            "weights": gmm.weights_,
+        }
+        self.memory_list.append(record)
+        return gmm.means_, gmm.covariances_
+
+    def predict(self, embeddings):
+        if len(self.memory_list) == 0:
+            raise RuntimeError("GMM committee is empty. Call fit_task() first.")
+        if isinstance(embeddings, torch.Tensor):
+            embeddings = embeddings.cpu().numpy()
+        log_likelihoods = []
+        for record in self.memory_list:
+            gmm = record["gmm"]
+            log_likelihoods.append(gmm.score_samples(embeddings))
+        log_likelihoods = np.stack(log_likelihoods, axis=1)  # [n_samples, n_models]
+        max_log_likelihood = np.max(log_likelihoods, axis=1)
+        return -max_log_likelihood

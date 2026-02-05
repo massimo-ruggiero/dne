@@ -94,3 +94,24 @@ class DNE(BaseMethod):
             return density
         else:
             pass
+
+    def training_epoch_gmm(
+        self,
+        density,
+        one_epoch_embeds,
+        task_wise_mean,
+        task_wise_cov,
+        task_wise_train_data_nums,
+        t,
+    ):
+        if hasattr(density, "fit_task"):
+            one_epoch_embeds = torch.cat(one_epoch_embeds)
+            one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
+            mean, cov = density.fit_task(one_epoch_embeds, task_id=t)
+            if len(task_wise_mean) < t + 1:
+                task_wise_mean.append(mean)
+                task_wise_cov.append(cov)
+            else:
+                task_wise_mean[t] = mean
+                task_wise_cov[t] = cov
+        return density
