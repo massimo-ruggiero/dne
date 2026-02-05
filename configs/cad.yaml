@@ -12,7 +12,7 @@ dataset:
 
 
 model:
-  name: dino_v2 #vit #dino_v2 vit resnet, vit, net_csflow, net_revdis
+  name: vit #dino_v2 #vit #dino_v2 vit resnet, vit, net_csflow, net_revdis
   dino_name: vit_base_patch14_dinov2
   pretrained: True
   method: dne # dne, panda, cutpaste, csflow, revdis, er, der, derpp, fdr, agem, upper
@@ -38,9 +38,9 @@ train:
   warmup_lr: 0
   base_lr: 0.0001 # 0.0001; csflow: 0.0002; revdis:0.005
   final_lr: 0
-  num_epochs: 1 #50
+  num_epochs: 50
   batch_size: 32 # 32, csflow:16
-  test_epochs: 1 #10
+  test_epochs: 10
   alpha: 0.4
   beta: 0.5
   num_classes: 2
