@@ -16,25 +16,18 @@ def t2np(tensor):
     return tensor.cpu().data.numpy() if tensor is not None else None
 
 
-def append_metric_row(args, epoch, task_id, task_name, roc_auc, split="test", round_task=None):
+def append_metric_row(args, epoch, task_id, task_name, roc_auc, round_task=None):
     save_dir = args.results_dir
     os.makedirs(save_dir, exist_ok=True)
     csv_path = os.path.join(save_dir, "metrics.csv")
-    data_order = getattr(args, "data_order", None)
-    if data_order is None and hasattr(args, "dataset"):
-        data_order = getattr(args.dataset, "dataset_order", None)
     row = {
         "epoch": epoch,
-        "split": split,
         "model_name": args.model.name,
-        "method": args.model.method,
-        "eval_classifier": args.eval.eval_classifier,
+        "density": args.density.name,
         "round_task": round_task,
         "task_id": task_id,
         "task_name": task_name,
         "auc": roc_auc,
-        "data_order": data_order,
-        "seed": getattr(args, "seed", None),
     }
     write_header = not os.path.exists(csv_path)
     with open(csv_path, "a", newline="") as f:
@@ -69,8 +62,8 @@ def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=No
         all_roc_auc.append(roc_auc * len(learned_task))
         task_num += len(learned_task)
         print('data_type:', learned_task, 'auc:', roc_auc, '**' * 11)
-        append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, split="test", round_task=round_task)
-        append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
+        append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, round_task=round_task)
+        append_metric_row(args, epoch, ",".join(learned_task), roc_auc)
 
         eval_task_wise_scores.append(anomaly_score)
         eval_task_wise_scores_np = np.concatenate(eval_task_wise_scores)
@@ -78,7 +71,7 @@ def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=No
         eval_task_wise_labels_np = np.concatenate(eval_task_wise_labels)
     mean_auc = np.sum(all_roc_auc) / task_num
     print('mean_auc:', mean_auc, '**' * 11)
-    append_metric_row(args, epoch, -1, "mean", mean_auc, split="test", round_task=round_task)
+    append_metric_row(args, epoch, -1, "mean", mean_auc, round_task=round_task)
 
     if args.eval.visualization:
         task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
@@ -113,8 +106,8 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=No
         all_roc_auc.append(roc_auc * len(learned_task))
         task_num += len(learned_task)
         print('data_type:', learned_task, 'auc:', roc_auc, '**' * 11)
-        append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, split="test", round_task=round_task)
-        append_metric_row(args, epoch, ",".join(learned_task), roc_auc, split="test")
+        append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, round_task=round_task)
+        append_metric_row(args, epoch, ",".join(learned_task), roc_auc)
 
         eval_task_wise_scores.append(pr_list_sp)
         eval_task_wise_scores_np = np.concatenate(eval_task_wise_scores)
@@ -122,7 +115,7 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=No
         eval_task_wise_labels_np = np.concatenate(eval_task_wise_labels)
     mean_auc = np.sum(all_roc_auc) / task_num
     print('mean_auc:', mean_auc, '**' * 11)
-    append_metric_row(args, epoch, -1, "mean", mean_auc, split="test", round_task=round_task)
+    append_metric_row(args, epoch, -1, "mean", mean_auc, round_task=round_task)
 
     if args.eval.visualization:
         task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
@@ -175,7 +168,7 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
             all_embeds.append(embeds)
             all_labels.append(labels)
             print('data_type:', learned_task[:], 'auc:', roc_auc, '**' * 11)
-            append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, split="test", round_task=round_task)
+            append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, round_task=round_task)
 
             if args.eval.visualization:
                 task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
