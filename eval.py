@@ -193,7 +193,7 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
 
         mean_auc = np.sum(all_roc_auc) / task_num
         print('mean_auc:', mean_auc, '**' * 11)
-        append_metric_row(args, epoch, -1, "mean", mean_auc, split="test", round_task=round_task)
+        append_metric_row(args, epoch, -1, "mean", mean_auc, round_task=round_task)
 
 
 if __name__ == "__main__":
