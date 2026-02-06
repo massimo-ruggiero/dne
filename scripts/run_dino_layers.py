@@ -53,6 +53,9 @@ def main():
     base_results = args.results_dir.rstrip("/\\")
     layer_numbers = range(args.layer_start, layer_end + 1, args.layer_step)
 
+    if not any(arg == "--data_dir" for arg in extra):
+        print("Warning: --data_dir not provided. Dataset path may be wrong.")
+
     for layer_num in layer_numbers:
         layer_idx = layer_num - 1  # convert to 0-based
         results_dir = f"{base_results}_layer{layer_num}"
