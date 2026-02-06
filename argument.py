@@ -37,7 +37,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config-file', default='./configs/cad.yaml', type=str, help="xxx.yaml")
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
-    parser.add_argument('--data_dir', type=str, default="../datasets/mvtec")
+    parser.add_argument('--data_dir', type=str, default="./datasets/mvtec")
     parser.add_argument('--mtd_dir', type=str, default="../datasets/mtd_ano_mask")
     parser.add_argument('--save_checkpoint', type=str2bool, default=False, help='save checkpoint or not.')
     parser.add_argument('--save_path', type=str, default="./checkpoints")
