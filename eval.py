@@ -142,7 +142,7 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
             with torch.no_grad():
                 for x, label in dataloader_test:
                     if args.model.name == 'dino_v2':
-                        embed = net(x.to(args.device))
+                        embed = net(x.to(args.device), layer_idx=args.dino_layer_idx)
                         embeds.append(embed.cpu())
                     else:
                         logit, embed = net(x.to(args.device))

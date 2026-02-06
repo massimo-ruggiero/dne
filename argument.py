@@ -44,6 +44,7 @@ def get_args():
     parser.add_argument('--results_dir', type=str, default="./results")
     parser.add_argument('--noise_ratio', type=float, default=0)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--dino_layer_idx', type=int, default=-1)
     args = parser.parse_args()
 
     print(args)

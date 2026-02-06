@@ -23,11 +23,30 @@ class DinoV2Timm(nn.Module):
                 param.requires_grad = False
             self.backbone.eval()
 
-    def forward_features(self, x):
+    def forward_features(self, x, layer_idx=None):
         with torch.no_grad():
-            features = self.backbone(x)
-            
-        return features
+            if layer_idx is None or layer_idx < 0:
+                return self.backbone(x)
+            if layer_idx >= len(self.backbone.blocks):
+                raise ValueError(
+                    f"dino_layer_idx {layer_idx} out of range (0..{len(self.backbone.blocks) - 1})."
+                )
+            captured = {}
 
-    def forward(self, x):
-        return self.forward_features(x)
+            def _hook(_module, _input, output):
+                captured["x"] = output
+
+            handle = self.backbone.blocks[layer_idx].register_forward_hook(_hook)
+            _ = self.backbone(x)
+            handle.remove()
+
+            x = captured.get("x")
+            if x is None:
+                raise RuntimeError("Failed to capture intermediate features for dino_v2.")
+            if x.dim() == 3:
+                x = self.backbone.norm(x)
+                x = x[:, 0]
+            return x
+
+    def forward(self, x, layer_idx=None):
+        return self.forward_features(x, layer_idx=layer_idx)

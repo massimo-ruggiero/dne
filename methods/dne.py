@@ -32,7 +32,7 @@ class DNE(BaseMethod):
 
         if self.args.model.name == 'dino_v2':
             with torch.no_grad():
-                noaug_embeds = self.net(no_strongaug_inputs)
+                noaug_embeds = self.net(no_strongaug_inputs, layer_idx=self.args.dino_layer_idx)
                 one_epoch_embeds.append(noaug_embeds.cpu())
             return
 
