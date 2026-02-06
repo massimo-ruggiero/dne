@@ -47,6 +47,10 @@ def get_args():
     parser.add_argument('--dino_layer_idx', type=int, default=-1)
     parser.add_argument('--dino_patch_tokens', type=str2bool, default=False)
     parser.add_argument('--dino_patch_top_k', type=int, default=5)
+    parser.add_argument('--dino_mask_threshold', type=float, default=10.0)
+    parser.add_argument('--dino_mask_kernel', type=int, default=3)
+    parser.add_argument('--dino_mask_border', type=float, default=0.2)
+    parser.add_argument('--dino_mask_min_center_ratio', type=float, default=0.35)
     args = parser.parse_args()
 
     print(args)

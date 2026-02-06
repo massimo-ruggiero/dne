@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 from .utils.base_method import BaseMethod
+from utils.patch_masking import select_foreground_patches
 
 
 
@@ -30,12 +31,13 @@ class DNE(BaseMethod):
                 for param in self.net.head.parameters():
                     param.requires_grad = False
 
-        if self.args.model.name == 'dino_v2':
+        if self.args.model.name in ('dino_v2', 'anomaly_dino'):
             with torch.no_grad():
+                use_patch_tokens = self.args.model.name == 'anomaly_dino'
                 noaug_embeds = self.net(
                     no_strongaug_inputs,
                     layer_idx=self.args.dino_layer_idx,
-                    patch_tokens=self.args.dino_patch_tokens,
+                    patch_tokens=use_patch_tokens,
                 )
                 one_epoch_embeds.append(noaug_embeds.cpu())
             return
@@ -61,7 +63,24 @@ class DNE(BaseMethod):
                        t):
         if self.args.eval.eval_classifier == 'density':
             one_epoch_embeds = torch.cat(one_epoch_embeds)
-            if one_epoch_embeds.dim() == 3:
+            if one_epoch_embeds.dim() == 3 and self.args.model.name == "anomaly_dino":
+                image_size = self.args.dataset.image_size
+                patch_size = getattr(self.net.backbone, "patch_size", None)
+                fg_patches = []
+                for i in range(one_epoch_embeds.size(0)):
+                    patches = one_epoch_embeds[i].numpy()
+                    selected, _ = select_foreground_patches(
+                        patches,
+                        image_size=image_size,
+                        patch_size=patch_size,
+                        threshold=self.args.dino_mask_threshold,
+                        kernel_size=self.args.dino_mask_kernel,
+                        border=self.args.dino_mask_border,
+                        min_center_ratio=self.args.dino_mask_min_center_ratio,
+                    )
+                    fg_patches.append(torch.from_numpy(selected))
+                one_epoch_embeds = torch.cat(fg_patches, dim=0)
+            elif one_epoch_embeds.dim() == 3:
                 one_epoch_embeds = one_epoch_embeds.reshape(-1, one_epoch_embeds.size(-1))
             one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
             mean, cov = density.fit(one_epoch_embeds)
@@ -112,7 +131,24 @@ class DNE(BaseMethod):
         save=True,
     ):
         one_epoch_embeds = torch.cat(one_epoch_embeds)
-        if one_epoch_embeds.dim() == 3:
+        if one_epoch_embeds.dim() == 3 and self.args.model.name == "anomaly_dino":
+            image_size = self.args.dataset.image_size
+            patch_size = getattr(self.net.backbone, "patch_size", None)
+            fg_patches = []
+            for i in range(one_epoch_embeds.size(0)):
+                patches = one_epoch_embeds[i].numpy()
+                selected, _ = select_foreground_patches(
+                    patches,
+                    image_size=image_size,
+                    patch_size=patch_size,
+                    threshold=self.args.dino_mask_threshold,
+                    kernel_size=self.args.dino_mask_kernel,
+                    border=self.args.dino_mask_border,
+                    min_center_ratio=self.args.dino_mask_min_center_ratio,
+                )
+                fg_patches.append(torch.from_numpy(selected))
+            one_epoch_embeds = torch.cat(fg_patches, dim=0)
+        elif one_epoch_embeds.dim() == 3:
             one_epoch_embeds = one_epoch_embeds.reshape(-1, one_epoch_embeds.size(-1))
         one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
         density.fit_task(one_epoch_embeds, task_id=t, save=save)

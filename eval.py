@@ -8,6 +8,7 @@ from scipy.ndimage import gaussian_filter
 from argument import get_args
 from datasets import get_dataloaders
 from utils.visualization import plot_tsne, compare_histogram, cal_anomaly_map
+from utils.patch_masking import select_foreground_patches
 
 
 
@@ -141,11 +142,12 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
             labels, embeds, logits = [], [], []
             with torch.no_grad():
                 for x, label in dataloader_test:
-                    if args.model.name == 'dino_v2':
+                    if args.model.name in ('dino_v2', 'anomaly_dino'):
+                        use_patch_tokens = args.model.name == 'anomaly_dino'
                         embed = net(
                             x.to(args.device),
                             layer_idx=args.dino_layer_idx,
-                            patch_tokens=args.dino_patch_tokens,
+                            patch_tokens=use_patch_tokens,
                         )
                         embeds.append(embed.cpu())
                     else:
@@ -159,17 +161,31 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
                 logits = torch.cat(logits)
             # norm embeds
             if args.eval.eval_classifier == 'density':
-                if args.model.name == 'dino_v2' and args.dino_patch_tokens and embeds.dim() == 3:
-                    bsz, n_tokens, dim = embeds.shape
-                    embeds = embeds.reshape(-1, dim)
-                    embeds = F.normalize(embeds, p=2, dim=1)
-                    scores = density.predict(embeds)
-                    scores = torch.as_tensor(scores).reshape(bsz, n_tokens)
-                    k = args.dino_patch_top_k
-                    if k <= 0 or k > n_tokens:
-                        k = n_tokens
-                    topk_scores, _ = torch.topk(scores, k=k, dim=1)
-                    distances = torch.mean(topk_scores, dim=1).numpy()
+                if args.model.name == 'anomaly_dino' and embeds.dim() == 3:
+                    image_size = args.dataset.image_size
+                    patch_size = getattr(net.backbone, "patch_size", None)
+                    distances = []
+                    for i in range(embeds.size(0)):
+                        patches = embeds[i].numpy()
+                        selected, _ = select_foreground_patches(
+                            patches,
+                            image_size=image_size,
+                            patch_size=patch_size,
+                            threshold=args.dino_mask_threshold,
+                            kernel_size=args.dino_mask_kernel,
+                            border=args.dino_mask_border,
+                            min_center_ratio=args.dino_mask_min_center_ratio,
+                        )
+                        selected = torch.from_numpy(selected)
+                        selected = F.normalize(selected, p=2, dim=1)
+                        scores = density.predict(selected)
+                        scores = torch.as_tensor(scores)
+                        k = args.dino_patch_top_k
+                        if k <= 0 or k > scores.numel():
+                            k = scores.numel()
+                        topk_scores, _ = torch.topk(scores, k=k, dim=0)
+                        distances.append(torch.mean(topk_scores).item())
+                    distances = np.array(distances)
                 else:
                     embeds = F.normalize(embeds, p=2, dim=1)  # embeds.shape=(2*bs, emd_dim)
                     distances = density.predict(embeds)  # distances.shape=(2*bs)

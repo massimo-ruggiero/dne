@@ -22,7 +22,7 @@ def get_net_optimizer_scheduler(args):
             net.load_pretrained(checkpoint_path)
         optimizer = get_optimizer(args, net)
         scheduler = CosineAnnealingWarmRestarts(optimizer, args.train.num_epochs)
-    elif args.model.name == 'dino_v2':
+    elif args.model.name in ('dino_v2', 'anomaly_dino'):
         net = DinoV2Timm(
             model_name=args.model.dino_name,
             pretrained=args.model.pretrained,
