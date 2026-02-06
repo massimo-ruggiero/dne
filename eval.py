@@ -142,7 +142,11 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
             with torch.no_grad():
                 for x, label in dataloader_test:
                     if args.model.name == 'dino_v2':
-                        embed = net(x.to(args.device), layer_idx=args.dino_layer_idx)
+                        embed = net(
+                            x.to(args.device),
+                            layer_idx=args.dino_layer_idx,
+                            patch_tokens=args.dino_patch_tokens,
+                        )
                         embeds.append(embed.cpu())
                     else:
                         logit, embed = net(x.to(args.device))
@@ -155,8 +159,20 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
                 logits = torch.cat(logits)
             # norm embeds
             if args.eval.eval_classifier == 'density':
-                embeds = F.normalize(embeds, p=2, dim=1)  # embeds.shape=(2*bs, emd_dim)
-                distances = density.predict(embeds)  # distances.shape=(2*bs)
+                if args.model.name == 'dino_v2' and args.dino_patch_tokens and embeds.dim() == 3:
+                    bsz, n_tokens, dim = embeds.shape
+                    embeds = embeds.reshape(-1, dim)
+                    embeds = F.normalize(embeds, p=2, dim=1)
+                    scores = density.predict(embeds)
+                    scores = torch.as_tensor(scores).reshape(bsz, n_tokens)
+                    k = args.dino_patch_top_k
+                    if k <= 0 or k > n_tokens:
+                        k = n_tokens
+                    topk_scores, _ = torch.topk(scores, k=k, dim=1)
+                    distances = torch.mean(topk_scores, dim=1).numpy()
+                else:
+                    embeds = F.normalize(embeds, p=2, dim=1)  # embeds.shape=(2*bs, emd_dim)
+                    distances = density.predict(embeds)  # distances.shape=(2*bs)
                 fpr, tpr, _ = roc_curve(labels, distances)
             elif args.eval.eval_classifier == 'head':
                 if args.model.name == 'dino_v2':

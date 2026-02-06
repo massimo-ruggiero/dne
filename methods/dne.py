@@ -32,7 +32,11 @@ class DNE(BaseMethod):
 
         if self.args.model.name == 'dino_v2':
             with torch.no_grad():
-                noaug_embeds = self.net(no_strongaug_inputs, layer_idx=self.args.dino_layer_idx)
+                noaug_embeds = self.net(
+                    no_strongaug_inputs,
+                    layer_idx=self.args.dino_layer_idx,
+                    patch_tokens=self.args.dino_patch_tokens,
+                )
                 one_epoch_embeds.append(noaug_embeds.cpu())
             return
 
@@ -57,6 +61,8 @@ class DNE(BaseMethod):
                        t):
         if self.args.eval.eval_classifier == 'density':
             one_epoch_embeds = torch.cat(one_epoch_embeds)
+            if one_epoch_embeds.dim() == 3:
+                one_epoch_embeds = one_epoch_embeds.reshape(-1, one_epoch_embeds.size(-1))
             one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
             mean, cov = density.fit(one_epoch_embeds)
 
