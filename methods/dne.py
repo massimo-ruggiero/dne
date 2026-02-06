@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 from .utils.base_method import BaseMethod
 from utils.patch_masking import select_foreground_patches
+from utils.dino_layers import parse_dino_layer_indices
 
 
 
@@ -34,10 +35,12 @@ class DNE(BaseMethod):
         if self.args.model.name in ('dino_v2', 'anomaly_dino'):
             with torch.no_grad():
                 use_patch_tokens = self.args.model.name == 'anomaly_dino'
+                layer_indices = parse_dino_layer_indices(self.args) if self.args.model.name == 'dino_v2' else None
                 noaug_embeds = self.net(
                     no_strongaug_inputs,
                     layer_idx=self.args.dino_layer_idx,
                     patch_tokens=use_patch_tokens,
+                    layer_indices=layer_indices,
                 )
                 one_epoch_embeds.append(noaug_embeds.cpu())
             return

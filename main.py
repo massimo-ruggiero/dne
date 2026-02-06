@@ -55,7 +55,11 @@ def main(args):
     os.makedirs(args.save_path, exist_ok=True)
     if args.model.name in ("dino_v2", "anomaly_dino"):
         layer_idx = getattr(args, "dino_layer_idx", -1)
-        layer_label = "last" if layer_idx is None or layer_idx < 0 else str(layer_idx + 1)
+        layer_list = getattr(args, "dino_layer_indices", "")
+        if layer_list:
+            layer_label = layer_list
+        else:
+            layer_label = "last" if layer_idx is None or layer_idx < 0 else str(layer_idx + 1)
         print("=" * 80)
         print(f"[{args.model.name}] Running with intermediate layer: {layer_label}")
         print("=" * 80)
@@ -109,7 +113,16 @@ def main(args):
                         task_wise_train_data_nums,
                         t,
                     )
-                    eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=t)
+                    eval_model(
+                        args,
+                        epoch,
+                        dataloaders_test,
+                        learned_tasks,
+                        net,
+                        density,
+                        round_task=t,
+                        all_test_filenames=all_test_filenames,
+                    )
                     net.train()
                     append_timing_row(args, epoch, "eval", time.perf_counter() - eval_start, task=t)
                 else:
@@ -124,7 +137,16 @@ def main(args):
                         t,
                         save=False,
                     )
-                    eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=t)
+                    eval_model(
+                        args,
+                        epoch,
+                        dataloaders_test,
+                        learned_tasks,
+                        net,
+                        density,
+                        round_task=t,
+                        all_test_filenames=all_test_filenames,
+                    )
                     net.train()
                     append_timing_row(args, epoch, "eval", time.perf_counter() - eval_start, task=t)
 
@@ -142,7 +164,16 @@ def main(args):
                 t,
                 save=True,
             )
-            eval_model(args, args.train.num_epochs - 1, dataloaders_test, learned_tasks, net, density, round_task=t)
+            eval_model(
+                args,
+                args.train.num_epochs - 1,
+                dataloaders_test,
+                learned_tasks,
+                net,
+                density,
+                round_task=t,
+                all_test_filenames=all_test_filenames,
+            )
             net.train()
             append_timing_row(args, args.train.num_epochs - 1, "eval", time.perf_counter() - eval_start, task=t)
 

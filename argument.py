@@ -45,6 +45,7 @@ def get_args():
     parser.add_argument('--noise_ratio', type=float, default=0)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--dino_layer_idx', type=int, default=-1)
+    parser.add_argument('--dino_layer_indices', type=str, default="")
     parser.add_argument('--dino_patch_tokens', type=str2bool, default=False)
     parser.add_argument('--dino_patch_top_k', type=int, default=5)
     parser.add_argument('--dino_mask_threshold', type=float, default=10.0)

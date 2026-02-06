@@ -68,5 +68,6 @@ def select_foreground_patches(
         min_center_ratio=min_center_ratio,
     )
     if mask.sum() == 0:
+        mask = np.ones_like(mask, dtype=bool)
         return patch_tokens, mask
     return patch_tokens[mask], mask
