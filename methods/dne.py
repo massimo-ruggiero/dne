@@ -112,6 +112,8 @@ class DNE(BaseMethod):
         save=True,
     ):
         one_epoch_embeds = torch.cat(one_epoch_embeds)
+        if one_epoch_embeds.dim() == 3:
+            one_epoch_embeds = one_epoch_embeds.reshape(-1, one_epoch_embeds.size(-1))
         one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
         density.fit_task(one_epoch_embeds, task_id=t, save=save)
         return density
