@@ -53,6 +53,12 @@ def main(args):
     if args.save_path == "./checkpoints":
         args.save_path = os.path.join(args.results_dir, "checkpoints")
     os.makedirs(args.save_path, exist_ok=True)
+    if args.model.name == "dino_v2":
+        layer_idx = getattr(args, "dino_layer_idx", -1)
+        layer_label = "last" if layer_idx is None or layer_idx < 0 else str(layer_idx + 1)
+        print("=" * 80)
+        print(f"[DINOv2] Running with intermediate layer: {layer_label}")
+        print("=" * 80)
     print(
         f"Running model={args.model.name}, method={args.model.method}, "
         f"eval={args.eval.eval_classifier}, density={args.density.name}"
