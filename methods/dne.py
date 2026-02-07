@@ -32,6 +32,10 @@ class DNE(BaseMethod):
             self.args.model.name != 'dino_v2'
             and self.args.model.fix_head
             and self.args.ewc_lambda <= 0
+            and not (
+                self.args.model.name in ("resnet", "resnet50")
+                and self.args.resnet_freeze_backbone
+            )
         ):
             if t >= 1:
                 for param in self.net.head.parameters():
