@@ -48,7 +48,7 @@ train:
 eval:
   eval_classifier: density # density, head
   batch_size: 32 # 32, revdis:1; csflow:16
-  visualization: False # True
+  visualization: True # True
 
 density:
   name: gmm_committee #gde #gmm_committee, gde, kde
