@@ -12,7 +12,7 @@ dataset:
 
 
 model:
-  name: vit #dino_v2 #anomaly_dino #dino_v2 # anomaly_dino, dino_v2 vit resnet, vit, net_csflow, net_revdis
+  name: resnet50 #vit #dino_v2 #anomaly_dino #dino_v2 # anomaly_dino, dino_v2 vit resnet, vit, net_csflow, net_revdis
   dino_name: vit_base_patch14_dinov2
   pretrained: True
   method: dne # dne, panda, cutpaste, csflow, revdis, er, der, derpp, fdr, agem, upper

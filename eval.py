@@ -151,7 +151,11 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
                         )
                         embeds.append(embed.cpu())
                     else:
-                        logit, embed = net(x.to(args.device))
+                        if args.model.name in ("resnet", "resnet50") and args.resnet_layer_idx > 0:
+                            embed = net.forward_features_layer(x.to(args.device), args.resnet_layer_idx)
+                            logit, _ = net(x.to(args.device))
+                        else:
+                            logit, embed = net(x.to(args.device))
                         _, logit = torch.max(logit, 1)
                         logits.append(logit.cpu())
                         embeds.append(embed.cpu())

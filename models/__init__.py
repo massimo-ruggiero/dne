@@ -12,7 +12,21 @@ from utils.optimizer import get_optimizer
 
 def get_net_optimizer_scheduler(args):
     if args.model.name == 'resnet':
-        net = ResNetModel(pretrained=args.model.pretrained, num_classes=args.train.num_classes)
+        net = ResNetModel(
+            pretrained=args.model.pretrained,
+            num_classes=args.train.num_classes,
+            backbone_name="resnet18",
+            freeze_backbone=getattr(args, "resnet_freeze_backbone", False),
+        )
+        optimizer = get_optimizer(args, net)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, args.train.num_epochs)
+    elif args.model.name == 'resnet50':
+        net = ResNetModel(
+            pretrained=args.model.pretrained,
+            num_classes=args.train.num_classes,
+            backbone_name="resnet50",
+            freeze_backbone=getattr(args, "resnet_freeze_backbone", True),
+        )
         optimizer = get_optimizer(args, net)
         scheduler = CosineAnnealingWarmRestarts(optimizer, args.train.num_epochs)
     elif args.model.name == 'vit':

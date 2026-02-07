@@ -50,7 +50,10 @@ class DNE(BaseMethod):
 
         self.optimizer.zero_grad()
         with torch.no_grad():
-            noaug_embeds = self.net.forward_features(no_strongaug_inputs) # z = f_e(x)
+            if self.args.model.name in ("resnet", "resnet50") and self.args.resnet_layer_idx > 0:
+                noaug_embeds = self.net.forward_features_layer(no_strongaug_inputs, self.args.resnet_layer_idx)
+            else:
+                noaug_embeds = self.net.forward_features(no_strongaug_inputs) # z = f_e(x)
             one_epoch_embeds.append(noaug_embeds.cpu())
         out, _ = self.net(inputs)  # y = h(z)
         loss = self.cross_entropy(out, labels)
