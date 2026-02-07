@@ -53,7 +53,7 @@ def main(args):
     if args.save_path == "./checkpoints":
         args.save_path = os.path.join(args.results_dir, "checkpoints")
     os.makedirs(args.save_path, exist_ok=True)
-    if args.model.name in ("dino_v2", "anomaly_dino"):
+    if args.model.name == "dino_v2":
         layer_idx = getattr(args, "dino_layer_idx", -1)
         layer_list = getattr(args, "dino_layer_indices", "")
         if layer_list:
@@ -121,7 +121,6 @@ def main(args):
                         net,
                         density,
                         round_task=t,
-                        all_test_filenames=all_test_filenames,
                     )
                     net.train()
                     append_timing_row(args, epoch, "eval", time.perf_counter() - eval_start, task=t)
@@ -145,7 +144,6 @@ def main(args):
                         net,
                         density,
                         round_task=t,
-                        all_test_filenames=all_test_filenames,
                     )
                     net.train()
                     append_timing_row(args, epoch, "eval", time.perf_counter() - eval_start, task=t)
@@ -172,7 +170,6 @@ def main(args):
                 net,
                 density,
                 round_task=t,
-                all_test_filenames=all_test_filenames,
             )
             net.train()
             append_timing_row(args, args.train.num_epochs - 1, "eval", time.perf_counter() - eval_start, task=t)

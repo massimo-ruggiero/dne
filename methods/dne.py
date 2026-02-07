@@ -3,7 +3,6 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 from .utils.base_method import BaseMethod
-from utils.patch_masking import select_foreground_patches
 from utils.dino_layers import parse_dino_layer_indices
 
 
@@ -12,6 +11,8 @@ class DNE(BaseMethod):
     def __init__(self, args, net, optimizer, scheduler):
         super(DNE, self).__init__(args, net, optimizer, scheduler)
         self.cross_entropy = nn.CrossEntropyLoss()
+        self.ewc_fisher = None
+        self.ewc_prev_params = None
 
 
     def forward(self, 
@@ -27,19 +28,21 @@ class DNE(BaseMethod):
         else:
             no_strongaug_inputs = inputs
 
-        if self.args.model.name != 'dino_v2' and self.args.model.fix_head:
+        if (
+            self.args.model.name != 'dino_v2'
+            and self.args.model.fix_head
+            and self.args.ewc_lambda <= 0
+        ):
             if t >= 1:
                 for param in self.net.head.parameters():
                     param.requires_grad = False
 
-        if self.args.model.name in ('dino_v2', 'anomaly_dino'):
+        if self.args.model.name == 'dino_v2':
             with torch.no_grad():
-                use_patch_tokens = self.args.model.name == 'anomaly_dino'
-                layer_indices = parse_dino_layer_indices(self.args) if self.args.model.name == 'dino_v2' else None
+                layer_indices = parse_dino_layer_indices(self.args)
                 noaug_embeds = self.net(
                     no_strongaug_inputs,
                     layer_idx=self.args.dino_layer_idx,
-                    patch_tokens=use_patch_tokens,
                     layer_indices=layer_indices,
                 )
                 one_epoch_embeds.append(noaug_embeds.cpu())
@@ -51,10 +54,22 @@ class DNE(BaseMethod):
             one_epoch_embeds.append(noaug_embeds.cpu())
         out, _ = self.net(inputs)  # y = h(z)
         loss = self.cross_entropy(out, labels)
+        loss = loss + self._ewc_loss()
         loss.backward()
         self.optimizer.step()
         if self.scheduler:
             self.scheduler.step(epoch)
+
+    def _get_inputs_labels(self, data):
+        if isinstance(data, list):
+            inputs = [x.to(self.args.device) for x in data]
+            labels = torch.arange(len(inputs), device=self.args.device)
+            labels = labels.repeat_interleave(inputs[0].size(0))
+            inputs = torch.cat(inputs, dim=0)
+        else:
+            inputs = data.to(self.args.device)
+            labels = torch.zeros(inputs.size(0), device=self.args.device).long()
+        return inputs, labels
 
 
     def training_epoch(self, 
@@ -66,24 +81,7 @@ class DNE(BaseMethod):
                        t):
         if self.args.eval.eval_classifier == 'density':
             one_epoch_embeds = torch.cat(one_epoch_embeds)
-            if one_epoch_embeds.dim() == 3 and self.args.model.name == "anomaly_dino":
-                image_size = self.args.dataset.image_size
-                patch_size = getattr(self.net.backbone, "patch_size", None)
-                fg_patches = []
-                for i in range(one_epoch_embeds.size(0)):
-                    patches = one_epoch_embeds[i].numpy()
-                    selected, _ = select_foreground_patches(
-                        patches,
-                        image_size=image_size,
-                        patch_size=patch_size,
-                        threshold=self.args.dino_mask_threshold,
-                        kernel_size=self.args.dino_mask_kernel,
-                        border=self.args.dino_mask_border,
-                        min_center_ratio=self.args.dino_mask_min_center_ratio,
-                    )
-                    fg_patches.append(torch.from_numpy(selected))
-                one_epoch_embeds = torch.cat(fg_patches, dim=0)
-            elif one_epoch_embeds.dim() == 3:
+            if one_epoch_embeds.dim() == 3:
                 one_epoch_embeds = one_epoch_embeds.reshape(-1, one_epoch_embeds.size(-1))
             one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
             mean, cov = density.fit(one_epoch_embeds)
@@ -134,25 +132,60 @@ class DNE(BaseMethod):
         save=True,
     ):
         one_epoch_embeds = torch.cat(one_epoch_embeds)
-        if one_epoch_embeds.dim() == 3 and self.args.model.name == "anomaly_dino":
-            image_size = self.args.dataset.image_size
-            patch_size = getattr(self.net.backbone, "patch_size", None)
-            fg_patches = []
-            for i in range(one_epoch_embeds.size(0)):
-                patches = one_epoch_embeds[i].numpy()
-                selected, _ = select_foreground_patches(
-                    patches,
-                    image_size=image_size,
-                    patch_size=patch_size,
-                    threshold=self.args.dino_mask_threshold,
-                    kernel_size=self.args.dino_mask_kernel,
-                    border=self.args.dino_mask_border,
-                    min_center_ratio=self.args.dino_mask_min_center_ratio,
-                )
-                fg_patches.append(torch.from_numpy(selected))
-            one_epoch_embeds = torch.cat(fg_patches, dim=0)
-        elif one_epoch_embeds.dim() == 3:
+        if one_epoch_embeds.dim() == 3:
             one_epoch_embeds = one_epoch_embeds.reshape(-1, one_epoch_embeds.size(-1))
         one_epoch_embeds = F.normalize(one_epoch_embeds, p=2, dim=1)
         density.fit_task(one_epoch_embeds, task_id=t, save=save)
         return density
+
+    def _ewc_loss(self):
+        if (
+            self.args.model.name != "vit"
+            or self.args.ewc_lambda <= 0
+            or self.ewc_fisher is None
+            or self.ewc_prev_params is None
+        ):
+            return 0.0
+        penalty = 0.0
+        for name, param in self.net.head.named_parameters():
+            if not param.requires_grad:
+                continue
+            fisher = self.ewc_fisher.get(name)
+            prev = self.ewc_prev_params.get(name)
+            if fisher is None or prev is None:
+                continue
+            penalty = penalty + (fisher * (param - prev).pow(2)).sum()
+        return self.args.ewc_lambda * penalty
+
+    def end_task(self, train_dataloader):
+        if self.args.model.name != "vit" or self.args.ewc_lambda <= 0:
+            return
+        self.net.eval()
+        fisher = {name: torch.zeros_like(param) for name, param in self.net.head.named_parameters()}
+        batch_count = 0
+        for batch_idx, (data) in enumerate(train_dataloader):
+            inputs, labels = self._get_inputs_labels(data)
+            self.net.zero_grad()
+            out, _ = self.net(inputs)
+            loss = self.cross_entropy(out, labels)
+            loss.backward()
+            for name, param in self.net.head.named_parameters():
+                if param.grad is None:
+                    continue
+                fisher[name] += param.grad.detach().pow(2)
+            batch_count += 1
+            if self.args.ewc_fisher_batches > 0 and batch_count >= self.args.ewc_fisher_batches:
+                break
+        if batch_count > 0:
+            for name in fisher:
+                fisher[name] /= float(batch_count)
+        if self.ewc_fisher is None:
+            self.ewc_fisher = fisher
+        else:
+            for name in fisher:
+                self.ewc_fisher[name] = self.ewc_fisher[name] + fisher[name]
+        self.ewc_prev_params = {
+            name: param.detach().clone()
+            for name, param in self.net.head.named_parameters()
+        }
+        self.net.train()

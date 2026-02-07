@@ -8,8 +8,6 @@ from scipy.ndimage import gaussian_filter
 from argument import get_args
 from datasets import get_dataloaders
 from utils.visualization import plot_tsne, compare_histogram, cal_anomaly_map
-from utils.patch_masking import select_foreground_patches
-import cv2
 from utils.dino_layers import parse_dino_layer_indices
 
 
@@ -39,24 +37,6 @@ def append_metric_row(args, epoch, task_id, task_name, roc_auc, round_task=None)
             writer.writeheader()
         writer.writerow(row)
 
-
-def _unnormalize_image(img_tensor):
-    mean = torch.tensor([0.485, 0.456, 0.406], dtype=img_tensor.dtype, device=img_tensor.device)
-    std = torch.tensor([0.229, 0.224, 0.225], dtype=img_tensor.dtype, device=img_tensor.device)
-    img = img_tensor * std[:, None, None] + mean[:, None, None]
-    return img.clamp(0, 1)
-
-
-def _save_heatmap(img_tensor, heatmap, save_path, alpha=0.5):
-    img = _unnormalize_image(img_tensor).permute(1, 2, 0).cpu().numpy()
-    img = (img * 255).astype(np.uint8)
-    heatmap = np.clip(heatmap, 0, 1)
-    heatmap = (heatmap * 255).astype(np.uint8)
-    heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_MAGMA)
-    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    overlay = cv2.addWeighted(img_bgr, 1 - alpha, heatmap_color, alpha, 0)
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    cv2.imwrite(save_path, overlay)
 
 def csflow_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=None):
     all_roc_auc = []
@@ -150,7 +130,7 @@ def revdis_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=No
 
 
 
-def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=None, all_test_filenames=None):
+def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round_task=None):
     if args.model.method == 'csflow':
         csflow_eval(args, epoch, dataloaders_test, learned_tasks, net, round_task=round_task)
     elif args.model.method == 'revdis':
@@ -160,19 +140,13 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
         task_num = 0
         for idx, (dataloader_test,  learned_task) in enumerate(zip(dataloaders_test, learned_tasks)):
             labels, embeds, logits = [], [], []
-            imgs = []
-            filenames = None
-            if all_test_filenames is not None and idx < len(all_test_filenames):
-                filenames = all_test_filenames[idx]
             with torch.no_grad():
                 for x, label in dataloader_test:
-                    if args.model.name in ('dino_v2', 'anomaly_dino'):
-                        use_patch_tokens = args.model.name == 'anomaly_dino'
-                        layer_indices = parse_dino_layer_indices(args) if args.model.name == 'dino_v2' else None
+                    if args.model.name == 'dino_v2':
+                        layer_indices = parse_dino_layer_indices(args)
                         embed = net(
                             x.to(args.device),
                             layer_idx=args.dino_layer_idx,
-                            patch_tokens=use_patch_tokens,
                             layer_indices=layer_indices,
                         )
                         embeds.append(embed.cpu())
@@ -182,51 +156,13 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
                         logits.append(logit.cpu())
                         embeds.append(embed.cpu())
                     labels.append(label.cpu())
-                    if args.model.name == 'anomaly_dino':
-                        imgs.append(x.cpu())
             labels, embeds = torch.cat(labels), torch.cat(embeds)
             if logits:
                 logits = torch.cat(logits)
-            if imgs:
-                imgs = torch.cat(imgs)
             # norm embeds
             if args.eval.eval_classifier == 'density':
-                if args.model.name == 'anomaly_dino' and embeds.dim() == 3:
-                    image_size = args.dataset.image_size
-                    patch_size = getattr(net.backbone, "patch_size", None)
-                    distances = []
-                    heatmaps = []
-                    for i in range(embeds.size(0)):
-                        patches = embeds[i].numpy()
-                        selected, mask = select_foreground_patches(
-                            patches,
-                            image_size=image_size,
-                            patch_size=patch_size,
-                            threshold=args.dino_mask_threshold,
-                            kernel_size=args.dino_mask_kernel,
-                            border=args.dino_mask_border,
-                            min_center_ratio=args.dino_mask_min_center_ratio,
-                        )
-                        selected = torch.from_numpy(selected)
-                        selected = F.normalize(selected, p=2, dim=1)
-                        scores = density.predict(selected)
-                        scores = torch.as_tensor(scores)
-                        k = args.dino_patch_top_k
-                        if k <= 0 or k > scores.numel():
-                            k = scores.numel()
-                        topk_scores, _ = torch.topk(scores, k=k, dim=0)
-                        distances.append(torch.mean(topk_scores).item())
-                        full_scores = np.full((mask.shape[0],), float(scores.min().item()), dtype=np.float32)
-                        full_scores[mask] = scores.cpu().numpy()
-                        grid = int(np.sqrt(full_scores.shape[0]))
-                        heatmap = full_scores.reshape(grid, grid)
-                        heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
-                        heatmap = cv2.resize(heatmap, (image_size, image_size), interpolation=cv2.INTER_LINEAR)
-                        heatmaps.append(heatmap)
-                    distances = np.array(distances)
-                else:
-                    embeds = F.normalize(embeds, p=2, dim=1)  # embeds.shape=(2*bs, emd_dim)
-                    distances = density.predict(embeds)  # distances.shape=(2*bs)
+                embeds = F.normalize(embeds, p=2, dim=1)  # embeds.shape=(2*bs, emd_dim)
+                distances = density.predict(embeds)  # distances.shape=(2*bs)
                 fpr, tpr, _ = roc_curve(labels, distances)
             elif args.eval.eval_classifier == 'head':
                 if args.model.name == 'dino_v2':
@@ -240,25 +176,7 @@ def eval_model(args, epoch, dataloaders_test, learned_tasks, net, density, round
             print('data_type:', learned_task[:], 'auc:', roc_auc, '**' * 11)
             append_metric_row(args, epoch, idx, ",".join(learned_task), roc_auc, round_task=round_task)
 
-            if args.model.name == 'anomaly_dino' and args.eval.eval_classifier == 'density':
-                task_dir = os.path.join(
-                    args.results_dir,
-                    f"anomaly_maps/task_{round_task}" if round_task is not None else "anomaly_maps/task_eval",
-                    f"component_{'_'.join(learned_task)}",
-                )
-                for i in range(labels.size(0)):
-                    if filenames is not None and i < len(filenames):
-                        filename = str(filenames[i])
-                        base = os.path.basename(filename)
-                        defect = os.path.basename(os.path.dirname(filename))
-                        class_name = os.path.basename(os.path.dirname(os.path.dirname(filename)))
-                        name = f"{class_name}_{defect}_{base}"
-                    else:
-                        name = f"img_{i:06d}.png"
-                    save_path = os.path.join(task_dir, name)
-                    _save_heatmap(imgs[i], heatmaps[i], save_path, alpha=0.5)
-
-            if args.eval.visualization and args.model.name != 'anomaly_dino':
+            if args.eval.visualization:
                 task_dir = os.path.join(args.results_dir, f"task_{round_task}" if round_task is not None else "task_eval")
                 name = f'{args.model.method}_task{len(learned_tasks)}_{learned_task[0]}_epoch{epoch}'
                 data_order = getattr(args, "data_order", None)
