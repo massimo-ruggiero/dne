@@ -10,7 +10,7 @@ from argument import get_args
 from models import get_net_optimizer_scheduler
 from methods import get_model
 from datasets import get_dataloaders
-from utils.density import get_density, is_gmm_committee
+from utils.density import get_density, is_gmm
 
 
 
@@ -102,7 +102,7 @@ def main(args):
             last_epoch_embeds = one_epoch_embeds
 
             if args.train.test_epochs > 0 and (epoch+1) % args.train.test_epochs == 0:
-                if not is_gmm_committee(density):
+                if not is_gmm(density):
                     eval_start = time.perf_counter()
                     net.eval()
                     density = model.training_epoch(
@@ -150,7 +150,7 @@ def main(args):
 
         if hasattr(model, 'end_task'):
             model.end_task(train_dataloader)
-        if is_gmm_committee(density) and last_epoch_embeds is not None:
+        if is_gmm(density) and last_epoch_embeds is not None:
             eval_start = time.perf_counter()
             net.eval()
             density = model.training_epoch_gmm(

@@ -51,12 +51,11 @@ eval:
   visualization: True # True
 
 density:
-  name: gmm_committee #gde #gmm_committee, gde, kde
+  name: gmm #gmm, gde, kde
   gmm:
     n_components: 3
     reg_covar: 1.0e-5
     covariance_type: full
     max_iter: 100
-
 
 

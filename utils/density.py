@@ -16,15 +16,15 @@ def is_gmm_density(density):
     return isinstance(density, GMMDensitySklearn)
 
 
-def is_gmm_committee(density):
-    return isinstance(density, GMMCommitteeDensity)
+def is_gmm(density):
+    return isinstance(density, GMM)
 
 
 def get_density(args):
     density_cfg = getattr(args, "density", None)
     density_name = getattr(density_cfg, "name", "gde")
 
-    if density_name == "gmm":
+    if density_name == "gmm_sklearn":
         gmm_cfg = getattr(density_cfg, "gmm", None)
         n_components = getattr(gmm_cfg, "n_components", 3)
         reg_covar = getattr(gmm_cfg, "reg_covar", 1e-6)
@@ -38,14 +38,14 @@ def get_density(args):
             max_iter=max_iter,
             random_state=random_state,
         )
-    if density_name == "gmm_committee":
+    if density_name == "gmm":
         gmm_cfg = getattr(density_cfg, "gmm", None)
         n_components = getattr(gmm_cfg, "n_components", 3)
         reg_covar = getattr(gmm_cfg, "reg_covar", 1e-5)
         covariance_type = getattr(gmm_cfg, "covariance_type", "full")
         max_iter = getattr(gmm_cfg, "max_iter", 100)
         random_state = getattr(args, "seed", 42)
-        return GMMCommitteeDensity(
+        return GMM(
             n_components=n_components,
             reg_covar=reg_covar,
             covariance_type=covariance_type,
@@ -157,7 +157,7 @@ class GMMDensitySklearn():
         return samples
 
 
-class GMMCommitteeDensity():
+class GMM():
     def __init__(self, n_components, reg_covar, covariance_type='full', max_iter=100, random_state=42):
         self.n_components = n_components
         self.covariance_type = covariance_type
